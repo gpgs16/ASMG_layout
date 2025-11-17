@@ -1,0 +1,130 @@
+# XML Schema Mapping Configuration
+# Defines how to extract data from different CMSD XML structures
+
+schemas:
+  # Current CMSD schema (with separate Layout section)
+  cmsd_v1:
+    name: "CMSD Standard with Separate Layout"
+    description: "Standard CMSD format with Layout and LayoutObject sections"
+    
+    # Schema detection
+    detection:
+      namespace: "urn:cmsd:main"
+      required_elements: ["DataSection", "Layout", "LayoutObject"]
+    
+    # Header information extraction
+    header:
+      document_identifier: ".//{*}HeaderSection/{*}DocumentIdentifier"
+      description: ".//{*}HeaderSection/{*}Description"
+      version: ".//{*}HeaderSection/{*}Version"
+      creation_time: ".//{*}HeaderSection/{*}CreationTime"
+      time_unit: ".//{*}HeaderSection/{*}UnitDefaults/{*}TimeUnit"
+      length_unit: ".//{*}HeaderSection/{*}UnitDefaults/{*}LengthUnit"
+      weight_unit: ".//{*}HeaderSection/{*}UnitDefaults/{*}WeightUnit"
+    
+    # Resource extraction
+    resources:
+      xpath: ".//{*}Resource"
+      fields:
+        identifier: "{*}Identifier"
+        resource_type: "{*}ResourceType"
+        name: "{*}Name"
+        description: "{*}Description"
+        current_status: "{*}CurrentStatus"
+        resource_class_identifier: "{*}ResourceClass/{*}ResourceClassIdentifier"
+      
+      # Properties extraction
+      properties:
+        xpath: "{*}Property"
+        fields:
+          name: "{*}Name"
+          value: "{*}Value"
+          unit: "{*}Unit"
+      
+      # Connections extraction  
+      connections:
+        xpath: "{*}GroupDefinition/{*}Connection"
+        fields:
+          identifier: "{*}Identifier"
+          to_resource_id: "{*}TargetResource/{*}ResourceIdentifier"
+    
+    # Layout objects extraction
+    layout_objects:
+      xpath: ".//{*}LayoutObject"
+      fields:
+        identifier: "{*}Identifier"
+        associated_resource_id: "{*}AssociatedResource/{*}ResourceIdentifier"
+        
+      # Boundary/dimensions
+      boundary:
+        width: "{*}Boundary/{*}Width"
+        depth: "{*}Boundary/{*}Depth"
+        height: "{*}Boundary/{*}Height"
+        unit: "{*}Boundary/{*}Unit"
+    
+    # Layout and placements
+    layout:
+      xpath: ".//{*}Layout"
+      fields:
+        identifier: "{*}Identifier"
+        description: "{*}Description"
+      
+      # Layout boundary
+      boundary:
+        width: "{*}Boundary/{*}Width"
+        depth: "{*}Boundary/{*}Depth"
+        height: "{*}Boundary/{*}Height"
+        unit: "{*}Boundary/{*}Unit"
+      
+      # Placements within layout
+      placements:
+        xpath: "{*}Placement"
+        fields:
+          layout_element_id: "{*}LayoutElementIdentifier"
+          
+          # Position
+          position_x: "{*}Location/{*}X"
+          position_y: "{*}Location/{*}Y"
+          position_z: "{*}Location/{*}Z"
+          
+          # Rotation
+          rotation_angle: "{*}Rotation/{*}Angle"
+          rotation_axis_x: "{*}Rotation/{*}X"
+          rotation_axis_y: "{*}Rotation/{*}Y"
+          rotation_axis_z: "{*}Rotation/{*}Z"
+    
+    # Part types extraction
+    part_types:
+      xpath: ".//{*}PartType"
+      fields:
+        identifier: "{*}Identifier"
+        name: "{*}Name"
+        description: "{*}Description"
+        weight: "{*}Weight/{*}Value"
+        weight_unit: "{*}Weight/{*}Unit"
+        
+        # Dimensions
+        width: "{*}Dimension/{*}Width"
+        depth: "{*}Dimension/{*}Depth"
+        height: "{*}Dimension/{*}Height"
+        dimension_unit: "{*}Dimension/{*}Unit"
+
+# Validation rules for extracted data
+validation:
+  required_elements:
+    - "resources"
+    - "layout_objects"
+  
+  resource_validation:
+    required_fields: ["identifier", "resource_type"]
+    valid_resource_types: ["source", "sink", "machine", "conveyor", "buffer", "station", "drain"]
+  
+  placement_validation:
+    required_fields: ["position_x", "position_y"]
+    coordinate_ranges:
+      x: [-1000.0, 1000.0]
+      y: [-1000.0, 1000.0]
+      z: [-100.0, 100.0]
+  
+  connection_validation:
+    required_fields: ["to_resource_id"]

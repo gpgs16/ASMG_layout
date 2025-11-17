@@ -1,0 +1,7 @@
+google-adk
+opencv-python
+easyocr
+Pillow
+numpy
+python-dotenv
+pywin32

@@ -1,0 +1,33 @@
+plant_simulation:
+  prog_id: "Tecnomatix.PlantSimulation.RemoteControl"
+  template_path: "data/Simulation_Model/ASMG_model_template.spp"
+  dest_dir: "C:/Users/kute/Desktop/Projects/ASMG - Copy/data/Simulation_Model"
+  object_templates:
+    source: "Source"
+    drain: "Drain"
+    station: "Station"
+    conveyor: "Conveyor"
+    buffer: "Buffer"
+    turntable: "TurnTable"
+  object_paths:
+    model_frame: ".Models.Model"
+    connector: ".MaterialFlow.Connector"
+    user_object: ".UserObjects.{template_name}"
+
+cmsd_xml:
+  output_dir: "C:/Users/kute/Desktop/Projects/ASMG - Copy/data/CMSD_XML"
+  file_prefix: "cmsd_xml_"
+  file_extension: ".xml"
+
+ai:
+  prompt_file: "Prompts/prompt_SM_03.md"
+  model_name: "gemini-2.5-pro"
+  min_api_key_length: 30
+
+simtalk:
+  python_dll_path: "C:/Users/kute/AppData/Local/anaconda3/envs/ASMG/python313.dll"
+  interpreter_path: "C:/Users/kute/Desktop/Projects/ASMG - Copy/interpreter/interpreter.py"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

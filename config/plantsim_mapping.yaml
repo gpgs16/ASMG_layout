@@ -1,0 +1,288 @@
+# Plant Simulation Mapping Configuration
+# Defines how XML data maps to Plant Simulation objects and properties
+
+# Resource type mappings
+resource_mappings:
+  source:
+    template: "Source"
+    description: "Material source/generator"
+    properties:
+      Interval: 
+        plantsim_property: "Interval"
+        data_type: "float"
+        unit_conversion: "time"
+        description: "Time interval between part generation"
+      
+      ProductType:
+        plantsim_property: "Path"  # Special handling - assigns Material Unit
+        data_type: "material_unit"
+        description: "Type of product to generate"
+        special_handler: "assign_material_unit"
+    
+    required_properties: ["Interval"]
+    default_properties:
+      Interval: 10.0  # Default 10 seconds
+
+  sink:
+    template: "Drain"
+    alias: "drain"  # Allow both 'sink' and 'drain' resource types
+    description: "Material sink/drain"
+    properties:
+      ProcessingTime:
+        plantsim_property: "ProcTime"
+        data_type: "float"
+        unit_conversion: "time"
+        description: "Time to process/remove parts"
+        default: 0.0
+
+  machine:
+    template: "Station"
+    alias: "station"  # Allow both 'machine' and 'station' resource types
+    description: "Processing station/machine"
+    properties:
+      Proc time:
+        plantsim_property: "ProcTime"
+        data_type: "float"
+        unit_conversion: "time"
+        description: "Time to process parts"
+        required: true
+      
+      capacity:
+        plantsim_property: "Capacity"
+        data_type: "int"
+        description: "Buffer capacity for incoming parts"
+        default: 1
+      
+      setup_time:
+        plantsim_property: "SetupTime"
+        data_type: "float"
+        unit_conversion: "time"
+        description: "Setup/changeover time"
+        default: 0.0
+
+  conveyor:
+    template: "Conveyor"
+    description: "Material handling conveyor"
+    properties:
+      Length:
+        plantsim_property: "Length"
+        data_type: "float"
+        unit_conversion: "length"
+        description: "Conveyor length"
+        required: true
+      
+      Speed:
+        plantsim_property: "Speed"
+        data_type: "float"
+        unit_conversion: "speed"
+        description: "Conveyor speed"
+        required: true
+      
+      Width:
+        plantsim_property: "Width"
+        data_type: "float"
+        unit_conversion: "length"
+        description: "Conveyor width"
+        default: 1.0
+
+  buffer:
+    template: "Buffer"
+    description: "Storage buffer/queue"
+    properties:
+      capacity:
+        plantsim_property: "Capacity"
+        data_type: "int"
+        description: "Maximum storage capacity"
+        required: true
+      
+      decision_rule:
+        plantsim_property: "DecisionRule"
+        data_type: "string"
+        description: "Queuing discipline (FIFO, LIFO, etc.)"
+        default: "FIFO"
+        valid_values: ["FIFO", "LIFO", "Priority"]
+
+  turntable:
+    template: "TurnTable"
+    description: "Rotating table for material routing/distribution"
+    properties:
+      Speed:
+        plantsim_property: "Speed"
+        data_type: "float"
+        unit_conversion: "speed"
+        description: "Rotation/transfer speed"
+        required: true
+      
+      Length:
+        plantsim_property: "Length"
+        data_type: "float"
+        unit_conversion: "length"
+        description: "Turntable diameter/length"
+        required: true
+      
+      Width:
+        plantsim_property: "Width"
+        data_type: "float"
+        unit_conversion: "length"
+        description: "Turntable width"
+        required: true
+
+# Unit conversions
+unit_conversions:
+  time:
+    base_unit: "second"
+    conversions:
+      second: 1.0
+      minute: 60.0
+      hour: 3600.0
+      millisecond: 0.001
+    
+  length:
+    base_unit: "meter"
+    conversions:
+      meter: 1.0
+      millimeter: 0.001
+      centimeter: 0.01
+      kilometer: 1000.0
+      inch: 0.0254
+      foot: 0.3048
+  
+  speed:
+    base_unit: "meter_per_second"
+    conversions:
+      meter_per_second: 1.0
+      "m/s": 1.0
+      kilometer_per_hour: 0.277778
+      "km/h": 0.277778
+      "km/hr": 0.277778
+      meter_per_minute: 0.016667
+      "m/min": 0.016667
+
+# Property transformations and validations
+property_validation:
+  ranges:
+    # Physical constraints
+    length: [0.1, 1000.0]  # 10cm to 1km
+    speed: [0.01, 100.0]   # 1cm/s to 100m/s
+    capacity: [1, 10000]    # 1 to 10,000 units
+    processing_time: [0.0, 86400.0]  # 0 to 24 hours
+    interval: [0.1, 86400.0]  # 0.1s to 24 hours
+  
+  # Data type validations
+  data_types:
+    float: "^-?\\d+(\\.\\d+)?$"
+    int: "^-?\\d+$"
+    positive_float: "^\\d+(\\.\\d+)?$"
+    positive_int: "^\\d+$"
+
+# Special handlers for complex property mappings
+special_handlers:
+  assign_material_unit:
+    description: "Create and assign Material Unit objects to sources"
+    parameters:
+      mu_prefix: "Part"  # Prefix for generated MU names
+      start_letter: "A"   # Starting letter for MU naming
+    
+  multi_product_setup:
+    description: "Handle sources with multiple product types"
+    parameters:
+      distribution_method: "round_robin"  # or "weighted", "random"
+
+# Plant Simulation specific settings
+plantsim_settings:
+  # Object paths
+  model_frame: ".Models.Model"
+  connector: ".MaterialFlow.Connector"
+  user_objects: ".UserObjects"
+  
+  # Template locations
+  templates:
+    Source: ".UserObjects.Source"
+    Drain: ".UserObjects.Drain" 
+    Station: ".UserObjects.Station"
+    Conveyor: ".UserObjects.Conveyor"
+    Buffer: ".UserObjects.Buffer"
+  
+  # Object naming rules
+  naming:
+    max_length: 32
+    invalid_chars: [" ", "(", ")", "[", "]", "{", "}", "<", ">", "/", "\\", ":", "*", "?", "\"", "|"]
+    replacement_char: "_"
+    case_handling: "preserve"  # "preserve", "upper", "lower"
+  
+  # Coordinate system
+  coordinates:
+    # Plant Simulation uses [X, Y, Z] format
+    default_z: 0.0
+    coordinate_property: "Coordinate3D"
+  
+  # Rotation handling
+  rotation:
+    # Plant Simulation rotation property
+    rotation_property: "_3D.Rotation"
+    # Default rotation values [angle, axis_x, axis_y, axis_z]
+    default_rotation: [0.0, 0.0, 0.0, 1.0]
+
+# Error handling and logging
+error_handling:
+  # What to do when property assignment fails
+  on_property_error: "warn_and_continue"  # "warn_and_continue", "error_and_stop", "ignore"
+  
+  # What to do when object creation fails
+  on_creation_error: "error_and_stop"  # "warn_and_continue", "error_and_stop"
+  
+  # What to do when connection fails
+  on_connection_error: "warn_and_continue"  # "warn_and_continue", "error_and_stop", "ignore"
+
+# Material Unit management
+material_units:
+  # Automatic creation settings
+  auto_create: true
+  naming_pattern: "Part{letter}"  # {letter}, {number}, {name}
+  starting_letter: "A"
+  
+  # MU template location
+  template_path: ".UserObjects.PartA"  # Base template to copy from
+  
+  # Property mappings for MU objects
+  properties:
+    weight: "Weight"
+    dimensions: "Dimensions"
+
+# Validation and quality checks
+quality_checks:
+  # Check for common issues
+  checks:
+    - name: "orphaned_resources"
+      description: "Resources without layout objects"
+      severity: "warning"
+    
+    - name: "missing_connections"
+      description: "Resources with no incoming or outgoing connections"
+      severity: "warning"
+    
+    - name: "invalid_coordinates"
+      description: "Objects with coordinates outside reasonable bounds"
+      severity: "error"
+      parameters:
+        max_x: 1000.0
+        max_y: 1000.0
+        min_x: -1000.0
+        min_y: -1000.0
+    
+    - name: "duplicate_names"
+      description: "Multiple objects with the same name"
+      severity: "error"
+
+# Performance optimization
+optimization:
+  # Batch operations when possible
+  batch_creation: true
+  batch_size: 50
+  
+  # Cache frequently accessed objects
+  cache_templates: true
+  cache_objects: true
+  
+  # Parallel processing (if supported)
+  parallel_connections: false  # Plant Simulation API may not be thread-safe
