@@ -9,8 +9,7 @@ from .common import MODEL_PRO
 
 class TextExtractorAgent(Agent):
     """
-    Agent 6: (NEW) LLM-based agent to extract all textual data (general
-    and component-specific) from the image.
+    LLM-based agent to extract all textual data (general and component-specific) from the image.
     """
 
     def __init__(self):
@@ -48,8 +47,7 @@ class TextExtractorAgent(Agent):
 
 class TextDataAggregatorAgent(BaseAgent):
     """
-    Agent 7: (NEW) Custom code-based agent to parse and aggregate
-    the extracted textual data.
+    Custom code-based agent to parse and aggregate the extracted textual data.
     """
     model_config = {"arbitrary_types_allowed": True}
 

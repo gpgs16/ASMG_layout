@@ -88,7 +88,7 @@ class ComponentDetector(BaseTool):
                 if not overlap:
                     final_contours.append((x1, y1, w1, h1, a1))
 
-            # 4. Draw results on image and save it
+            # 4. Draw results on image (for debugging/visualization if needed)
             result_img = original_image.copy()
             for i, (x, y, w, h, _) in enumerate(final_contours):
                 #cv2.rectangle(result_img, (x, y), (x + w, y + h), (0, 0, 255), 2)
@@ -142,19 +142,12 @@ class ComponentDetector(BaseTool):
                 component_types[str(i)] = best_text
             
             print(f"--- ComponentDetector OCR Result: {component_types} ---")
-
-            # Encode the result image to bytes to return it
-            is_success, buffer = cv2.imencode(".png", result_img)
-            if not is_success:
-                return {"error": "Failed to encode result image."}
-            numbered_image_bytes = buffer.tobytes()
-
             print(f"--- ComponentDetector Result: Found {len(bounding_boxes)} components ---")
-            # Return bounding boxes, the new component types, and the annotated image
+            
+            # Return bounding boxes and the new component types
             return {
                 "box_data": bounding_boxes,
-                "component_types": component_types,
-                "numbered_image_bytes": numbered_image_bytes
+                "component_types": component_types
             }
 
         except Exception as e:

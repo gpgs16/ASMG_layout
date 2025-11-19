@@ -13,12 +13,6 @@ class PlantSimBuilderAgent(BaseAgent):
     """
     Agent that takes CMSD XML data and orchestrates Plant Simulation 
     to build the visual model.
-    
-    FIXES:
-    1. Saves XML files to auto_sim/data/CMSD_XML_Output/ and updates active_xml_path.txt 
-       in the auto_sim folder with the new XML file path
-    2. Executes interpreter.py INSIDE Plant Simulation using SimTalk's executePythonFile
-       command, matching the implementation in main.py
     """
     
     def __init__(self):
@@ -62,13 +56,10 @@ class PlantSimBuilderAgent(BaseAgent):
             
             print(f"--- PlantSimBuilderAgent: Saved XML to {xml_file_path} ---")
 
-            # FIX PROBLEM 1: Update active_xml_path.txt where interpreter.py expects it
+            # Update active_xml_path.txt where interpreter.py expects it
             # The interpreter looks for it in the auto_sim directory (project_root)
             # We need to find the project root. Assuming this file is in agents/plant_sim_builder.py
             # and project root is ../..
-            # But wait, __file__ will be the path to this new file.
-            # The original code used Path(__file__).parent / "active_xml_path.txt" assuming agent.py was in root.
-            # Now we are in agents/ subdir. So we need to go up one level to get to root.
             
             # Assuming auto_sim_plant_sim is the root where active_xml_path.txt resides.
             # agents/plant_sim_builder.py -> parent -> agents -> parent -> auto_sim_plant_sim
@@ -117,7 +108,7 @@ class PlantSimBuilderAgent(BaseAgent):
 
             print(f"--- PlantSimBuilderAgent: Successfully loaded model: {model_path} ---")
 
-            # FIX PROBLEM 2: Execute interpreter.py INSIDE Plant Simulation using SimTalk
+            # Execute interpreter.py INSIDE Plant Simulation using SimTalk
             # This matches the implementation in main.py
             print("--- PlantSimBuilderAgent: Executing SimTalk commands to run interpreter inside Plant Sim... ---")
             

@@ -1,5 +1,4 @@
 from . import agent
-from . import tools
 
 # Instantiate your main agent and name it root_agent
 # This makes it discoverable by ADK tools like `adk web`.

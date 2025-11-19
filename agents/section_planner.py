@@ -4,8 +4,7 @@ from .common import MODEL_PRO
 
 class SectionPlannerAgent(Agent):
     """
-    Agent 2: (MODIFIED) Analyzes the layout to identify ALL 11 flow paths
-    and their component lists.
+    Analyzes the layout to identify ALL 11 flow paths and their component lists.
     """
 
     def __init__(self):

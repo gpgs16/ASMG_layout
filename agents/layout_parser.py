@@ -9,9 +9,6 @@ from .common import logger
 class LayoutParserAgent(BaseAgent):
     """
     Agent 1: Wraps the ComponentDetector tool to parse the initial image.
-    (RESTORED) This is the original agent from your file, which saves
-    'components' (semantic_id -> box) and 'component_ids' (list of semantic_ids)
-    to the state.
     """
 
     # Declare the tool as a class attribute for Pydantic to recognize it.
@@ -21,7 +18,6 @@ class LayoutParserAgent(BaseAgent):
     model_config = {"arbitrary_types_allowed": True}
 
     def __init__(self):
-        # Instantiate the tool before calling super()
         component_detector = ComponentDetector()
         super().__init__(
             name="LayoutParserAgent",
@@ -36,9 +32,8 @@ class LayoutParserAgent(BaseAgent):
         Execution Logic:
         1. Validate and Get original_image_bytes from the initial user message.
         2. Call ComponentDetector tool and handle tool errors.
-        3. Save the numbered image as an artifact using the artifact_service.
-        4. Transform box data to the required schema, casting to int.
-        5. Yield a single Event containing the image (for UI) and all data (for next agents).
+        3. Transform box data to the required schema, casting to int.
+        4. Yield a single Event containing the data (for next agents).
         """
         print("\n--- Running Agent: LayoutParserAgent ---")
 
@@ -73,28 +68,12 @@ class LayoutParserAgent(BaseAgent):
             )
             return
 
-        # 4. PREPARE IMAGE PART
-        if "numbered_image_bytes" not in tool_result:
-            error_message = "LayoutParserAgent Error: ComponentDetector tool ran but did not return 'numbered_image_bytes'."
-            print(f"--- {error_message} ---")
-            yield Event(
-                author=self.name,
-                content=types.Content(parts=[types.Part(text=error_message)])
-            )
-            return
-
-        numbered_image_part = types.Part.from_bytes(
-            data=tool_result["numbered_image_bytes"], 
-            mime_type="image/png"
-        )
-        
-        # 5. TRANSFORM BOX DATA (WITH INT CASTING AND COORDINATE TRANSFORMATION)
+        # 4. TRANSFORM BOX DATA (WITH INT CASTING AND COORDINATE TRANSFORMATION)
         box_data_from_tool = tool_result.get("box_data", {})
         box_data_schema = {}
         component_count = 0
         component_ids = []
 
-        # --- MODIFICATION: Added try...except block for robustness and coordinate transformation ---
         try:
             # First pass: collect all y-coordinates to find the most negative value
             all_y_coords = []
@@ -138,12 +117,9 @@ class LayoutParserAgent(BaseAgent):
                 content=types.Content(parts=[types.Part(text=error_message)])
             )
             return
-        # --- END OF MODIFICATION ---
 
-        # --- NEW: Create semantic 'components' dictionary ---
         component_types = tool_result.get("component_types", {})
 
-        # --- DEBUGGING: Check for duplicate component types from OCR ---
         print("LayoutParserAgent: Checking for duplicate component types from OCR...")
         seen_types = {}
         duplicates_found = False
@@ -157,34 +133,32 @@ class LayoutParserAgent(BaseAgent):
                 seen_types[component_type] = contour_id
         if not duplicates_found:
             print("LayoutParserAgent: No duplicate component types found.")
-        # --- END OF DEBUGGING ---
 
         components_data = {}
         for contour_id, component_type in component_types.items():
             if contour_id in box_data_schema:
                 # Map component_type (e.g., "L") to its box data
                 components_data[component_type] = box_data_schema[contour_id]
-        # --- END OF NEW ---
 
-        # --- RECOMMENDED MODIFICATION ---
         # Make component_ids semantic (e.g., ['L1', 'C1', 'D1', ...])
         component_ids = list(components_data.keys()) 
         component_count = len(component_ids)
         print(f"LayoutParserAgent: Detected {component_count} semantic components. IDs: {component_ids}")
-        # --- END OF MODIFICATION ---
 
-        # 6. PREPARE STATE DELTA
+        # 5. PREPARE STATE DELTA
         state_delta_for_next_agent = {
             "component_ids": component_ids, # (e.g., ['L1', 'C1', ...])
             "components": components_data,  # Map: Semantic ID -> {box}
         }
         
-        # 7. YIELD THE SUCCESS EVENT
-        print("--- LayoutParserAgent: Yielding Event with image and state_delta ---")
+        # 6. YIELD THE SUCCESS EVENT
+        print("--- LayoutParserAgent: Yielding Event with state_delta ---")
+        import json
+        components_json = json.dumps(components_data, indent=2)
         yield Event(
             author=self.name,
-            content=types.Content(parts=[numbered_image_part]), # This shows the image in the UI
+            content=types.Content(parts=[types.Part(text=components_json)]),
             actions=EventActions(
                 state_delta=state_delta_for_next_agent,
-            ) # This passes data to the next agent
+            )
         )
