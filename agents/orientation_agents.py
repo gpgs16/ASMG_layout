@@ -1,4 +1,4 @@
-from google.adk.agents import Agent, BaseAgent, LoopAgent
+from google.adk.agents import Agent, BaseAgent, LoopAgent, SequentialAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 from google.genai import types
@@ -7,10 +7,71 @@ import json
 import re
 from .common import MODEL_PRO
 
+class OrientationLoopInitializerAgent(BaseAgent):
+    """Initializes loop state once flow sections are available."""
+    model_config = {"arbitrary_types_allowed": True}
+
+    def __init__(self):
+        super().__init__(
+            name="OrientationLoopInitializerAgent",
+            description="Sets up the loop context for orientation finding.",
+        )
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        print("\n--- Running Agent: OrientationLoopInitializerAgent ---")
+        flow_sections = ctx.session.state.get("flow_sections")
+
+        if not flow_sections:
+            error_msg = "OrientationLoopInitializerAgent Error: 'flow_sections' not found in state. Cannot proceed."
+            print(f"--- {error_msg} ---")
+            yield Event(
+                author=self.name,
+                content=types.Content(parts=[types.Part(text=error_msg)])
+            )
+            return
+
+        try:
+            if not isinstance(flow_sections, list) or len(flow_sections) == 0:
+                raise ValueError("flow_sections is not a valid, non-empty list.")
+
+            first_section = flow_sections[0]
+
+            if "section" not in first_section or "trace_instruction" not in first_section:
+                raise ValueError("First section in JSON is missing 'section' or 'trace_instruction' key.")
+
+            state_delta = {
+                "current_section_index": 0,
+                "current_section_components": first_section.get("section"),
+                "current_section_trace_instruction": first_section.get("trace_instruction"),
+                "master_orientation_map": {},
+            }
+
+            if not state_delta["current_section_components"]:
+                raise ValueError("First section's 'section' key is empty.")
+
+            print(f"--- OrientationLoopInitializerAgent: Initializing loop for {len(flow_sections)} sections. ---")
+
+            yield Event(
+                author=self.name,
+                actions=EventActions(
+                    state_delta=state_delta,
+                )
+            )
+
+        except Exception as e:
+            error_msg = f"OrientationLoopInitializerAgent Error: Failed to initialize loop. Details: {e}"
+            print(f"--- {error_msg} ---")
+            yield Event(
+                author=self.name,
+                content=types.Content(parts=[types.Part(text=error_msg)])
+            )
+            return
+
 class SectionOrientationFinderAgent(Agent):
     """
-    Agent 5a: (MODIFIED) LLM agent that finds orientations *only* for
-    'C' and 'M' components in one section list, with a stronger prompt.
+    LLM agent that finds orientations *only* for 'C' and 'M' components in one section list.
     """
     def __init__(self):
         super().__init__(
@@ -53,9 +114,7 @@ class SectionOrientationFinderAgent(Agent):
 
 class OrientationAggregatorAgent(BaseAgent):
     """
-    Agent 5b: (NEW) Custom code-based agent to merge orientation
-    dictionaries into the master map.
-    Now with integrated robust JSON extraction on failure.
+    Custom code-based agent to merge orientation dictionaries into the master map.
     """
     model_config = {"arbitrary_types_allowed": True}
 
@@ -138,8 +197,7 @@ class OrientationAggregatorAgent(BaseAgent):
 
 class OrientationLoopControllerAgent(BaseAgent):
     """
-    Agent 5c: (MODIFIED) Custom code-based agent that controls the
-    orientation-finding loop and sets default 0 for non-C/M components.
+    Custom code-based agent that controls the orientation-finding loop and sets default 0 for non-C/M components.
     """
     model_config = {"arbitrary_types_allowed": True}
 
@@ -162,7 +220,6 @@ class OrientationLoopControllerAgent(BaseAgent):
             # --- Loop Continues ---
             next_section = flow_sections[new_index]
 
-            # --- MODIFICATION: Use 'section' key ---
             if "section" not in next_section or "trace_instruction" not in next_section:
                  error_msg = f"OrientationLoopControllerAgent Error: Section {new_index} in JSON is missing 'section' or 'trace_instruction' key."
                  print(f"--- {error_msg} ---")
@@ -171,10 +228,9 @@ class OrientationLoopControllerAgent(BaseAgent):
 
             state_delta = {
                 "current_section_index": new_index,
-                "current_section_components": next_section.get("section"), # <-- NEW
+                "current_section_components": next_section.get("section"),
                 "current_section_trace_instruction": next_section.get("trace_instruction"),
             }
-            # --- END MODIFICATION ---
 
             print(f"--- OrientationLoopControllerAgent: Proceeding to section {new_index} ---")
             yield Event(
@@ -198,12 +254,10 @@ class OrientationLoopControllerAgent(BaseAgent):
                 # Get the orientation from the map if it exists, otherwise default to 0
                 final_orientations[comp_id] = master_map.get(comp_id, 0)
 
-            # --- MODIFICATION: Set final state ---
             state_delta = {
                 # Set the final 'orientations' key for the next agent
                 "orientations": final_orientations
             }
-            # --- END MODIFICATION ---
             
             print(f"--- OrientationLoopControllerAgent: Finalized {len(final_orientations)} orientations (with defaults). Escalating to end loop. ---")
             yield Event(
@@ -214,18 +268,31 @@ class OrientationLoopControllerAgent(BaseAgent):
                 )
             )
 
-class OrientationFinderLoopAgent(LoopAgent):
+class OrientationFinderLoop(LoopAgent):
     """
-    Agent 5: (NEW) The LoopAgent that orchestrates finding orientations
-    for all sections.
+    The LoopAgent that orchestrates finding orientations for all sections.
     """
     def __init__(self):
         super().__init__(
-            name="OrientationFinderLoopAgent",
+            name="OrientationFinderLoop",
             sub_agents=[
                 SectionOrientationFinderAgent(),
                 OrientationAggregatorAgent(),
                 OrientationLoopControllerAgent()
             ],
             max_iterations=20 # Safeguard against infinite loops
+        )
+
+class OrientationFinderAgent(SequentialAgent):
+    """
+    Sequential agent that first initializes the loop state, then runs the orientation finding loop.
+    """
+    def __init__(self):
+        super().__init__(
+            name="OrientationFinderAgent",
+            description="Initializes and runs the orientation finding process.",
+            sub_agents=[
+                OrientationLoopInitializerAgent(),
+                OrientationFinderLoop()
+            ]
         )

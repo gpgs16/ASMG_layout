@@ -1,9 +1,8 @@
 from google.adk.agents import SequentialAgent
 from .layout_parser import LayoutParserAgent
 from .section_planner import SectionPlannerAgent
-from .state_initializer import StateInitializerAgent
 from .connection_generator import ConnectionGeneratorAgent
-from .orientation_agents import OrientationFinderLoopAgent
+from .orientation_agents import OrientationFinderAgent
 from .text_extraction_agents import TextExtractorAgent, TextDataAggregatorAgent
 from .json_assembler import JsonAssemblerAgent
 from .xml_transformer import XmlTransformerAgent
@@ -12,7 +11,7 @@ from .plant_sim_builder import PlantSimBuilderAgent
 class OrchestratorAgent(SequentialAgent):
     """
     Main entry point and controller of the entire workflow.
-    (MODIFIED) This agent now orchestrates the new, two-loop flow.
+    This agent orchestrates the sequence of sub-agents in the provided order to analyze layout diagrams
     """
 
     def __init__(self):
@@ -22,12 +21,11 @@ class OrchestratorAgent(SequentialAgent):
             sub_agents=[
                 LayoutParserAgent(),
                 SectionPlannerAgent(),
-                StateInitializerAgent(),       # Sets up state for the loop
                 ConnectionGeneratorAgent(),
-                OrientationFinderLoopAgent(),  # loop
-                TextExtractorAgent(),        # <-- NEW
+                OrientationFinderAgent(),
+                TextExtractorAgent(),        
                 TextDataAggregatorAgent(),
-                JsonAssemblerAgent(),          # Final assembly
+                JsonAssemblerAgent(),          
                 XmlTransformerAgent(),
                 PlantSimBuilderAgent()
             ],

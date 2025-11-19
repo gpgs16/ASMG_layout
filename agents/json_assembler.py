@@ -8,8 +8,7 @@ import re
 
 class JsonAssemblerAgent(BaseAgent):
     """
-    Agent 8: (MODIFIED) Assembles all intermediate data into the final JSON format.
-    ...
+    Assembles all intermediate data into the final JSON format.
     """
     
     model_config = {"arbitrary_types_allowed": True}
@@ -32,13 +31,11 @@ class JsonAssemblerAgent(BaseAgent):
         orientations = ctx.session.state.get("orientations")
         flow_sections = ctx.session.state.get("flow_sections")
         
-        # --- NEW: Retrieve extracted text data ---
         extracted_text_data = ctx.session.state.get("extracted_text_data", {})
         component_properties = extracted_text_data.get("component_properties", {})
         general_properties = extracted_text_data.get("general_properties", {})
-        # --- END NEW ---
 
-        # --- NEW: Extract conveyor speed and prepare for component-level assignment ---
+        # Extract conveyor speed and prepare for component-level assignment
         conveyor_speed = None
         for key, value in general_properties.items():
             if "speed" in key.lower():
@@ -104,8 +101,8 @@ class JsonAssemblerAgent(BaseAgent):
         
         print(f"--- JsonAssemblerAgent: Generated ordered list of {len(ordered_component_ids)} unique components. ---")
 
-        # --- NEW: Calculate pixels_per_meter ratio ---
-        pixels_per_meter = 320.0  # Default value if no reference is found
+        # Calculate pixels_per_meter ratio
+        pixels_per_meter = 40.0  # Default value if no reference is found
         reference_found = False
         try:
             for comp_id, props in component_properties.items():
@@ -136,7 +133,6 @@ class JsonAssemblerAgent(BaseAgent):
         except Exception as e:
             print(f"--- JsonAssemblerAgent: Warning - Failed to calculate pixels_per_meter ratio. "
                   f"Using default of {pixels_per_meter}. Details: {e} ---")
-        # --- END NEW ---
 
 
         # 4. Perform the deterministic transformation *using the ordered list*
@@ -152,7 +148,7 @@ class JsonAssemblerAgent(BaseAgent):
                 box = components_data[semantic_id].copy() # Use a copy to avoid modifying original data
                 orientation = orientations.get(semantic_id, 0)
 
-                # --- NEW: Adjust origin and swap dimensions based on orientation BEFORE conversion ---
+                # Adjust origin and swap dimensions based on orientation BEFORE conversion
                 x_orig = int(box["x"])
                 y_orig = int(box["y"])
                 l_px = int(box["length"])
@@ -176,7 +172,7 @@ class JsonAssemblerAgent(BaseAgent):
                     x_new = x_orig
                     y_new = y_orig - (w_px / 2)
 
-                # --- NEW: Apply additional adjustments for L, M, U components ---
+                # Apply additional adjustments for L, M, U components
                 if semantic_id.startswith(('L', 'M', 'U')):
                     if orientation == 0:
                         x_new += l_px / 2
@@ -189,42 +185,37 @@ class JsonAssemblerAgent(BaseAgent):
                         # This adjustment happens before the swap of l_px and w_px
                         y_new -= int(box["width"]) / 2
                 
-                # --- MODIFICATION: Convert origin coordinates to a list of meters ---
+                # Convert origin coordinates to a list of meters
                 origin_list = [
                     round(x_new / pixels_per_meter, 4),
                     round(y_new / pixels_per_meter, 4)
                 ]
-                # --- END NEW ---
                 
-                # --- MODIFICATION: Restructure bounding_box and convert dimensions ---
+                # Restructure bounding_box and convert dimensions
                 length_m = round(l_px / pixels_per_meter, 4)
                 width_m = round(w_px / pixels_per_meter, 4)
-                # --- END MODIFICATION ---
 
-                # --- NEW: Get component-specific text data ---
+                # Get component-specific text data
                 extra_data = component_properties.get(semantic_id, {})
-                # --- END NEW ---
                 
                 final_components[semantic_id] = {
                     "origin": origin_list,
                     "orientation": orientation
                 }
 
-                # --- NEW: Add speed to C and D components ---
+                # Add speed to C and D components
                 if conveyor_speed and (semantic_id.startswith('C') or semantic_id.startswith('D')):
                     final_components[semantic_id]["speed"] = conveyor_speed
-                # --- END NEW ---
 
-                # --- NEW: Merge the extra data ---
+                # Merge the extra data
                 final_components[semantic_id].update(extra_data)
-                # --- END NEW ---
 
-                # --- MODIFICATION: Add dimensions only for C and D components ---
+                # Add dimensions only for C and D components
                 if semantic_id.startswith('C') or semantic_id.startswith('D'):
                     final_components[semantic_id]["length"] = length_m
                     final_components[semantic_id]["width"] = width_m
             
-            # --- MODIFICATION: Reverted to use original connections list ---
+            # Reverted to use original connections list
             final_layout = {
                 "components": final_components,
                 "connections": connections

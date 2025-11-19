@@ -8,33 +8,18 @@ import re
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
 
-# --- (MODIFIED) Component Type Mapping ---
 # Maps your JSON prefixes to CMSD ResourceType and ResourceClass
-# per your colleague's standard
 COMPONENT_TYPE_MAP = {
     "L": ("source", "RC_Source"),
     "C": ("conveyor", "RC_Conveyor"),
     "M": ("machine", "RC_Station"),
-    "D": ("turntable", "RC_Turntable"), # <<< CHANGED 'station' TO 'turntable'
+    "D": ("turntable", "RC_Turntable"),
     "U": ("sink", "RC_Drain"),
 }     
 
 class XmlTransformerAgent(BaseAgent):
     """
-    Agent 9: (UPDATED) Deterministically transforms the final JSON layout
-    into the CMSD XML format required by Plant Simulation.
-    
-    Updates:
-    - Component mappings (M, D, U) updated per user specification.
-    - "side" property from connections is removed.
-    - Rotation axis is '1' (anti-clockwise).
-    - A static <PartType> section is now added.
-    - ***MODIFIED:***
-      - `_build_resource` now correctly adds <Length> and <Width>
-        properties to conveyor/turntable resources.
-      - `_build_layout_object` now uses the correct default dimensions
-        (1x2m for Source/Drain, 2x2m for Station) and sets Height to 1.0m
-        for all objects per user request.
+    Deterministically transforms the final layout JSON into the CMSD XML format required by Plant Simulation.
     """
     model_config = {"arbitrary_types_allowed": True}
 
@@ -71,7 +56,7 @@ class XmlTransformerAgent(BaseAgent):
             self._build_header(cmsd_doc)
             data_section = ET.SubElement(cmsd_doc, "DataSection")
             self._build_resource_classes(data_section)
-            self._build_part_types(data_section) # <-- (NEW) Add PartType section
+            self._build_part_types(data_section)
             
             layout = ET.SubElement(data_section, "Layout")
             ET.SubElement(layout, "Identifier").text = "FactoryLayout_Main"
@@ -125,12 +110,12 @@ class XmlTransformerAgent(BaseAgent):
         ET.SubElement(unit_defaults, "WeightUnit").text = "kilogram"
 
     def _build_resource_classes(self, parent: ET.Element):
-        """(MODIFIED) Builds the static <ResourceClass> definitions per user spec."""
+        """Builds the static <ResourceClass> definitions."""
         classes = [
             ("RC_Source", "source", "Production Source Class"),
             ("RC_Conveyor", "conveyor", "Conveyor Class"),
             ("RC_Station", "machine", "Processing Station Class"), # For 'M' components
-            ("RC_Turntable", "turntable", "Turntable Class"), # <<< CHANGED 'station' TO 'turntable'
+            ("RC_Turntable", "turntable", "Turntable Class"), # For 'D' components
             ("RC_Drain", "sink", "Production Drain Class"),     # For 'U' components
         ]
         for id, type, desc in classes:
@@ -140,7 +125,7 @@ class XmlTransformerAgent(BaseAgent):
             ET.SubElement(rc, "Name").text = desc
 
     def _build_part_types(self, parent: ET.Element):
-        """(NEW) Builds a static <PartType> definition as requested."""
+        """Builds a static <PartType> definition."""
         part_type = ET.SubElement(parent, "PartType")
         ET.SubElement(part_type, "Identifier").text = "DefaultPart"
         ET.SubElement(part_type, "Name").text = "Default Part"
@@ -149,7 +134,7 @@ class XmlTransformerAgent(BaseAgent):
         ET.SubElement(prop, "Value").text = "General"
 
     def _get_resource_type_and_class(self, comp_id: str) -> Tuple[str, str]:
-        """(MODIFIED) Maps a component ID prefix to its CMSD ResourceType and ResourceClass."""
+        """Maps a component ID prefix to its CMSD ResourceType and ResourceClass."""
         prefix = comp_id[0].upper() # Get first letter
         if prefix not in COMPONENT_TYPE_MAP:
             # Stricter error checking
@@ -173,9 +158,7 @@ class XmlTransformerAgent(BaseAgent):
     
     def _build_resource(self, parent: ET.Element, comp_id: str, props: Dict[str, Any], all_connections: List[Dict[str, Any]]):
         """
-        (MODIFIED) Builds a single <Resource> element.
-        - Now explicitly adds <Length> and <Width> properties if they exist
-          (i.e., for conveyors/turntables), as requested.
+        Builds a single <Resource> element.
         """
         resource = ET.SubElement(parent, "Resource")
         ET.SubElement(resource, "Identifier").text = comp_id
@@ -191,8 +174,7 @@ class XmlTransformerAgent(BaseAgent):
             if key in ["origin", "orientation"]:
                 continue
             
-            # --- NEW: Handle Length/Width explicitly for Resource properties ---
-            # This fixes Problem A
+            # Handle Length/Width explicitly for Resource properties
             if key == "length":
                 prop_elem = ET.SubElement(resource, "Property")
                 ET.SubElement(prop_elem, "Name").text = "Length"
@@ -206,7 +188,6 @@ class XmlTransformerAgent(BaseAgent):
                 ET.SubElement(prop_elem, "Unit").text = "meter"
                 ET.SubElement(prop_elem, "Value").text = str(value)
                 continue # Skip the generic parser
-            # --- END NEW ---
 
             # Generic parser for other properties (speed, Proc time, etc.)
             val_str, unit_str, name_str = self._parse_property(key, value)
@@ -232,14 +213,10 @@ class XmlTransformerAgent(BaseAgent):
                 ET.SubElement(conn_elem, "ConnectionIdentifier").text = f"Conn_{comp_id}_to_{to_comp}"
                 target_res = ET.SubElement(conn_elem, "TargetResource")
                 ET.SubElement(target_res, "ResourceIdentifier").text = to_comp
-                
-                # --- "side" property logic has been removed ---
 
     def _build_layout_object(self, parent: ET.Element, comp_id: str, props: Dict[str, Any]):
         """
-        (MODIFIED) Builds a single <LayoutObject> element.
-        - Now applies default dimensions (1x2, 2x2) per user request.
-        - Sets Height to 1.0 for all objects per user request.
+        Builds a single <LayoutObject> element.
         """
         lo = ET.SubElement(parent, "LayoutObject")
         ET.SubElement(lo, "Identifier").text = f"LO_{comp_id}"
@@ -249,7 +226,6 @@ class XmlTransformerAgent(BaseAgent):
         
         prefix = comp_id[0].upper()
         
-        # --- NEW LOGIC FOR DIMENSIONS (Fixes Problem B & C) ---
         width_val = "1.0"  # Default
         depth_val = "1.0"  # Default
         height_val = "1.0" # User request: 1m for EVERY object
@@ -272,7 +248,6 @@ class XmlTransformerAgent(BaseAgent):
         # else:
             # Fallback for any other type (e.g., Buffer if added)
             # will use the defaults (1.0, 1.0, 1.0)
-        # --- END NEW LOGIC ---
 
         boundary = ET.SubElement(lo, "Boundary")
         ET.SubElement(boundary, "Width").text = width_val
@@ -281,7 +256,7 @@ class XmlTransformerAgent(BaseAgent):
         ET.SubElement(boundary, "Unit").text = "meter"
 
     def _map_orientation(self, angle_deg: int) -> Tuple[str, str, str, str]:
-        """(MODIFIED) Maps a simple degree to the CMSD rotation tuple."""
+        """Maps a simple degree to the CMSD rotation tuple."""
         # Per your clarification: [Angle, 0, 0, 1] for anti-clockwise
         return (str(angle_deg), "0", "0", "1")
 

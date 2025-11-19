@@ -3,12 +3,12 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 from google.genai import types
 from typing import AsyncGenerator
+import json
+import re
 
 class ConnectionGeneratorAgent(BaseAgent):
     """
-    Agent 4: (NEW) Code-based agent to deterministically generate
-    the connection list from the ordered flow_sections.
-    Replaces ConnectionFinderLoopAgent.
+    Code-based agent to deterministically generate the connection list from the ordered flow_sections.
     """
     model_config = {"arbitrary_types_allowed": True}
 
@@ -24,8 +24,24 @@ class ConnectionGeneratorAgent(BaseAgent):
         print("\n--- Running Agent: ConnectionGeneratorAgent ---")
         flow_sections = ctx.session.state.get("flow_sections")
 
+        # If flow_sections is not already parsed, try to parse it from flow_sections_raw
         if not flow_sections:
-            error_msg = "ConnectionGeneratorAgent Error: 'flow_sections' not found in state."
+            flow_sections_raw = ctx.session.state.get("flow_sections_raw")
+            if flow_sections_raw:
+                try:
+                    print("--- ConnectionGeneratorAgent: Parsing 'flow_sections_raw'... ---")
+                    json_match = re.search(r'\[.*\]', flow_sections_raw, re.DOTALL)
+                    if json_match:
+                        json_string = json_match.group(0)
+                        flow_sections = json.loads(json_string)
+                        print(f"--- ConnectionGeneratorAgent: Successfully parsed {len(flow_sections)} sections. ---")
+                    else:
+                        print("--- ConnectionGeneratorAgent: No JSON list found in 'flow_sections_raw'. ---")
+                except Exception as e:
+                    print(f"--- ConnectionGeneratorAgent: Failed to parse 'flow_sections_raw'. Details: {e} ---")
+
+        if not flow_sections:
+            error_msg = "ConnectionGeneratorAgent Error: 'flow_sections' not found in state and could not be parsed."
             print(f"--- {error_msg} ---")
             yield Event(
                 author=self.name,
@@ -60,8 +76,10 @@ class ConnectionGeneratorAgent(BaseAgent):
                     total_connections += 1
 
             # Save the final list to state for the JsonAssemblerAgent
+            # Also save flow_sections if we parsed it
             state_delta = {
-                "connections": master_connection_list
+                "connections": master_connection_list,
+                "flow_sections": flow_sections 
             }
 
             print(f"--- ConnectionGeneratorAgent: Successfully generated {total_connections} connections from {len(flow_sections)} sections. ---")
