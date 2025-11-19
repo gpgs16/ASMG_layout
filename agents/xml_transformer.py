@@ -1,0 +1,309 @@
+from google.adk.agents import BaseAgent
+from google.adk.agents.invocation_context import InvocationContext
+from google.adk.events import Event, EventActions
+from google.genai import types
+from typing import AsyncGenerator, Tuple, Optional, Dict, Any, List
+import json
+import re
+import xml.etree.ElementTree as ET
+import xml.dom.minidom
+
+# --- (MODIFIED) Component Type Mapping ---
+# Maps your JSON prefixes to CMSD ResourceType and ResourceClass
+# per your colleague's standard
+COMPONENT_TYPE_MAP = {
+    "L": ("source", "RC_Source"),
+    "C": ("conveyor", "RC_Conveyor"),
+    "M": ("machine", "RC_Station"),
+    "D": ("turntable", "RC_Turntable"), # <<< CHANGED 'station' TO 'turntable'
+    "U": ("sink", "RC_Drain"),
+}     
+
+class XmlTransformerAgent(BaseAgent):
+    """
+    Agent 9: (UPDATED) Deterministically transforms the final JSON layout
+    into the CMSD XML format required by Plant Simulation.
+    
+    Updates:
+    - Component mappings (M, D, U) updated per user specification.
+    - "side" property from connections is removed.
+    - Rotation axis is '1' (anti-clockwise).
+    - A static <PartType> section is now added.
+    - ***MODIFIED:***
+      - `_build_resource` now correctly adds <Length> and <Width>
+        properties to conveyor/turntable resources.
+      - `_build_layout_object` now uses the correct default dimensions
+        (1x2m for Source/Drain, 2x2m for Station) and sets Height to 1.0m
+        for all objects per user request.
+    """
+    model_config = {"arbitrary_types_allowed": True}
+
+    def __init__(self):
+        super().__init__(
+            name="XmlTransformerAgent",
+            description="Transforms final layout JSON into CMSD XML format.",
+        )
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        
+        print("\n--- Running Agent: XmlTransformerAgent ---")
+        
+        # 1. Get the JSON string from state
+        final_json_str = ctx.session.state.get("final_layout")
+        if not final_json_str:
+            error_msg = "XmlTransformerAgent Error: 'final_layout' JSON not found in state."
+            print(f"--- {error_msg} ---")
+            yield Event(author=self.name, content=types.Content(parts=[types.Part(text=error_msg)]))
+            return
+
+        try:
+            # 2. Parse the JSON
+            layout_data = json.loads(final_json_str)
+            components = layout_data.get("components", {})
+            connections = layout_data.get("connections", [])
+
+            # 3. Build the XML Structure
+            cmsd_doc = ET.Element("CMSDDocument", xmlns="urn:cmsd:main")
+            
+            # --- Build Static Sections ---
+            self._build_header(cmsd_doc)
+            data_section = ET.SubElement(cmsd_doc, "DataSection")
+            self._build_resource_classes(data_section)
+            self._build_part_types(data_section) # <-- (NEW) Add PartType section
+            
+            layout = ET.SubElement(data_section, "Layout")
+            ET.SubElement(layout, "Identifier").text = "FactoryLayout_Main"
+            ET.SubElement(layout, "Description").text = "Main factory layout generated from ADK"
+
+            # --- Build Dynamic Sections (Resources, LayoutObjects, Placements) ---
+            print("--- XmlTransformerAgent: Starting component loop... ---")
+            for comp_id, props in components.items():
+                # A. Create <Resource> element
+                self._build_resource(data_section, comp_id, props, connections)
+                
+                # B. Create <LayoutObject> element
+                self._build_layout_object(data_section, comp_id, props)
+                
+                # C. Create <Placement> element (inside the <Layout> tag)
+                self._build_placement(layout, comp_id, props)
+            
+            print(f"--- XmlTransformerAgent: Processed {len(components)} components. ---")
+
+            # 4. Serialize to XML String & Pretty-Print
+            xml_string = self._pretty_print_xml(cmsd_doc)
+
+            # 5. Yield Final Event
+            print("--- XmlTransformerAgent: XML Transformation complete. ---")
+            yield Event(
+                author=self.name,
+                content=types.Content(parts=[types.Part(text=xml_string)]),
+                actions=EventActions(
+                    state_delta={"final_xml_layout": xml_string} # Save to state
+                )
+            )
+
+        except Exception as e:
+            error_msg = f"XmlTransformerAgent Error: Failed to transform JSON to XML. Details: {e}"
+            print(f"--- {error_msg} ---")
+            yield Event(author=self.name, content=types.Content(parts=[types.Part(text=error_msg)]))
+            return
+
+    # --- XML Building Helper Functions ---
+
+    def _build_header(self, parent: ET.Element):
+        """Builds the static <HeaderSection>"""
+        header = ET.SubElement(parent, "HeaderSection")
+        ET.SubElement(header, "DocumentIdentifier").text = "Generated_FactoryLayout_001"
+        ET.SubElement(header, "Description").text = "Factory layout generated by ADK XmlTransformerAgent"
+        ET.SubElement(header, "Version").text = "1.0"
+        ET.SubElement(header, "CreationTime").text = "2025-01-01T12:00:00Z" # Placeholder
+        unit_defaults = ET.SubElement(header, "UnitDefaults")
+        ET.SubElement(unit_defaults, "TimeUnit").text = "second"
+        ET.SubElement(unit_defaults, "LengthUnit").text = "meter"
+        ET.SubElement(unit_defaults, "WeightUnit").text = "kilogram"
+
+    def _build_resource_classes(self, parent: ET.Element):
+        """(MODIFIED) Builds the static <ResourceClass> definitions per user spec."""
+        classes = [
+            ("RC_Source", "source", "Production Source Class"),
+            ("RC_Conveyor", "conveyor", "Conveyor Class"),
+            ("RC_Station", "machine", "Processing Station Class"), # For 'M' components
+            ("RC_Turntable", "turntable", "Turntable Class"), # <<< CHANGED 'station' TO 'turntable'
+            ("RC_Drain", "sink", "Production Drain Class"),     # For 'U' components
+        ]
+        for id, type, desc in classes:
+            rc = ET.SubElement(parent, "ResourceClass")
+            ET.SubElement(rc, "Identifier").text = id
+            ET.SubElement(rc, "ResourceType").text = type
+            ET.SubElement(rc, "Name").text = desc
+
+    def _build_part_types(self, parent: ET.Element):
+        """(NEW) Builds a static <PartType> definition as requested."""
+        part_type = ET.SubElement(parent, "PartType")
+        ET.SubElement(part_type, "Identifier").text = "DefaultPart"
+        ET.SubElement(part_type, "Name").text = "Default Part"
+        prop = ET.SubElement(part_type, "Property")
+        ET.SubElement(prop, "Name").text = "PartClass"
+        ET.SubElement(prop, "Value").text = "General"
+
+    def _get_resource_type_and_class(self, comp_id: str) -> Tuple[str, str]:
+        """(MODIFIED) Maps a component ID prefix to its CMSD ResourceType and ResourceClass."""
+        prefix = comp_id[0].upper() # Get first letter
+        if prefix not in COMPONENT_TYPE_MAP:
+            # Stricter error checking
+            raise ValueError(f"Unknown component prefix: '{prefix}' for component ID '{comp_id}'. No mapping found.")
+        return COMPONENT_TYPE_MAP[prefix]
+
+    def _parse_property(self, key: str, value: str) -> Tuple[str, str, Optional[str]]:
+        """Parses value and unit from strings like '8 sec' or '0.2 m/s'."""
+        match = re.match(r'^\s*([\d\.]+)\s*([\w/°]+)', str(value))
+        if match:
+            val_str, unit_str = match.groups()
+            
+            if unit_str.lower() in ["s", "sec", "second"]:
+                unit_str = "second"
+            elif unit_str.lower() in ["m/s", "meter/second"]:
+                unit_str = "meter/second"
+                
+            return val_str, unit_str, key
+        
+        return str(value), None, key
+    
+    def _build_resource(self, parent: ET.Element, comp_id: str, props: Dict[str, Any], all_connections: List[Dict[str, Any]]):
+        """
+        (MODIFIED) Builds a single <Resource> element.
+        - Now explicitly adds <Length> and <Width> properties if they exist
+          (i.e., for conveyors/turntables), as requested.
+        """
+        resource = ET.SubElement(parent, "Resource")
+        ET.SubElement(resource, "Identifier").text = comp_id
+        ET.SubElement(resource, "Name").text = comp_id
+        
+        res_type, res_class = self._get_resource_type_and_class(comp_id)
+        ET.SubElement(resource, "ResourceType").text = res_type
+        rc_elem = ET.SubElement(resource, "ResourceClass")
+        ET.SubElement(rc_elem, "ResourceClassIdentifier").text = res_class
+
+        # Add other properties from JSON
+        for key, value in props.items():
+            if key in ["origin", "orientation"]:
+                continue
+            
+            # --- NEW: Handle Length/Width explicitly for Resource properties ---
+            # This fixes Problem A
+            if key == "length":
+                prop_elem = ET.SubElement(resource, "Property")
+                ET.SubElement(prop_elem, "Name").text = "Length"
+                ET.SubElement(prop_elem, "Unit").text = "meter"
+                ET.SubElement(prop_elem, "Value").text = str(value)
+                continue # Skip the generic parser
+            
+            if key == "width":
+                prop_elem = ET.SubElement(resource, "Property")
+                ET.SubElement(prop_elem, "Name").text = "Width"
+                ET.SubElement(prop_elem, "Unit").text = "meter"
+                ET.SubElement(prop_elem, "Value").text = str(value)
+                continue # Skip the generic parser
+            # --- END NEW ---
+
+            # Generic parser for other properties (speed, Proc time, etc.)
+            val_str, unit_str, name_str = self._parse_property(key, value)
+            
+            prop_elem = ET.SubElement(resource, "Property")
+            ET.SubElement(prop_elem, "Name").text = name_str
+            if unit_str:
+                ET.SubElement(prop_elem, "Unit").text = unit_str
+            ET.SubElement(prop_elem, "Value").text = val_str
+
+        # Find and add outgoing connections
+        outgoing_connections = [c for c in all_connections if c.get("from") == comp_id]
+        if outgoing_connections:
+            group_def = ET.SubElement(resource, "GroupDefinition")
+            ET.SubElement(group_def, "Identifier").text = f"GD_{comp_id}_Output"
+            
+            for conn in outgoing_connections:
+                to_comp = conn.get("to")
+                if not to_comp:
+                    continue
+                    
+                conn_elem = ET.SubElement(group_def, "Connection")
+                ET.SubElement(conn_elem, "ConnectionIdentifier").text = f"Conn_{comp_id}_to_{to_comp}"
+                target_res = ET.SubElement(conn_elem, "TargetResource")
+                ET.SubElement(target_res, "ResourceIdentifier").text = to_comp
+                
+                # --- "side" property logic has been removed ---
+
+    def _build_layout_object(self, parent: ET.Element, comp_id: str, props: Dict[str, Any]):
+        """
+        (MODIFIED) Builds a single <LayoutObject> element.
+        - Now applies default dimensions (1x2, 2x2) per user request.
+        - Sets Height to 1.0 for all objects per user request.
+        """
+        lo = ET.SubElement(parent, "LayoutObject")
+        ET.SubElement(lo, "Identifier").text = f"LO_{comp_id}"
+        
+        assoc_res = ET.SubElement(lo, "AssociatedResource")
+        ET.SubElement(assoc_res, "ResourceIdentifier").text = comp_id
+        
+        prefix = comp_id[0].upper()
+        
+        # --- NEW LOGIC FOR DIMENSIONS (Fixes Problem B & C) ---
+        width_val = "1.0"  # Default
+        depth_val = "1.0"  # Default
+        height_val = "1.0" # User request: 1m for EVERY object
+        
+        if prefix == 'C' or prefix == 'D':
+            # Conveyors/Turntables use their calculated dimensions
+            # The XML standard uses 'Width' for length and 'Depth' for width
+            width_val = str(props.get("length", 1.0))
+            depth_val = str(props.get("width", 1.0))
+            # Height remains "1.0" per user's "every object" rule
+        elif prefix == 'L': # Source
+            width_val = "1.0"
+            depth_val = "2.0"
+        elif prefix == 'U': # Drain
+            width_val = "1.0"
+            depth_val = "2.0"
+        elif prefix == 'M': # Station
+            width_val = "2.0"
+            depth_val = "2.0"
+        # else:
+            # Fallback for any other type (e.g., Buffer if added)
+            # will use the defaults (1.0, 1.0, 1.0)
+        # --- END NEW LOGIC ---
+
+        boundary = ET.SubElement(lo, "Boundary")
+        ET.SubElement(boundary, "Width").text = width_val
+        ET.SubElement(boundary, "Depth").text = depth_val
+        ET.SubElement(boundary, "Height").text = height_val
+        ET.SubElement(boundary, "Unit").text = "meter"
+
+    def _map_orientation(self, angle_deg: int) -> Tuple[str, str, str, str]:
+        """(MODIFIED) Maps a simple degree to the CMSD rotation tuple."""
+        # Per your clarification: [Angle, 0, 0, 1] for anti-clockwise
+        return (str(angle_deg), "0", "0", "1")
+
+    def _build_placement(self, parent_layout: ET.Element, comp_id: str, props: Dict[str, Any]):
+        """Builds a single <Placement> element inside the main <Layout>."""
+        placement = ET.SubElement(parent_layout, "Placement")
+        ET.SubElement(placement, "LayoutElementIdentifier").text = f"LO_{comp_id}"
+        
+        loc = ET.SubElement(placement, "Location")
+        ET.SubElement(loc, "X").text = str(props.get("origin", [0,0])[0])
+        ET.SubElement(loc, "Y").text = str(props.get("origin", [0,0])[1])
+        ET.SubElement(loc, "Z").text = "0.0" 
+        
+        rot_tuple = self._map_orientation(props.get("orientation", 0))
+        rotation = ET.SubElement(placement, "Rotation")
+        ET.SubElement(rotation, "Angle").text = rot_tuple[0]
+        ET.SubElement(rotation, "X").text = rot_tuple[1]
+        ET.SubElement(rotation, "Y").text = rot_tuple[2]
+        ET.SubElement(rotation, "Z").text = rot_tuple[3]
+
+    def _pretty_print_xml(self, element: ET.Element) -> str:
+        """Returns a pretty-printed XML string from an ElementTree element."""
+        rough_string = ET.tostring(element, 'utf-8')
+        reparsed = xml.dom.minidom.parseString(rough_string)
+        return reparsed.toprettyxml(indent="    ", encoding="UTF-8").decode("utf-8")
