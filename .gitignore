@@ -1,0 +1,21 @@
+# Ignore Python cache directories
+__pycache__/
+**/__pycache__/
+
+# Ignore environment file
+.env
+
+# Ignore large or sensitive model files
+llms-full.txt
+
+# Ignore output and temporary files
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db

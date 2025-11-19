@@ -6,18 +6,15 @@ import json
 import re  # Import regex for parsing
 from typing import List, Dict, Any, AsyncGenerator, Tuple, Optional
 from .tools import ComponentDetector
-import asyncio
 import xml.etree.ElementTree as ET
 import xml.dom.minidom  # For pretty-printing the final XML
 
-import logging
 import os
-import time
+import logging
 from pathlib import Path
 from datetime import datetime
-
-from config.config_loader import Config
-from src import plant_sim_controller
+from .config.config_loader import Config
+from .src import plant_sim_controller
 
 config = Config()
 logger = logging.getLogger(__name__)
@@ -1073,16 +1070,7 @@ class XmlTransformerAgent(BaseAgent):
             # 4. Serialize to XML String & Pretty-Print
             xml_string = self._pretty_print_xml(cmsd_doc)
 
-            # --- 5. Save XML to a local file ---
-            file_location = "./cmsd_output.xml"
-            try:
-                with open(file_location, "w", encoding="utf-8") as f:
-                    f.write(xml_string)
-                print(f"--- XmlTransformerAgent: Successfully saved XML to {file_location} ---")
-            except Exception as e:
-                print(f"--- XmlTransformerAgent: WARNING - Failed to save XML file. Details: {e} ---")
-
-            # 6. Yield Final Event
+            # 5. Yield Final Event
             print("--- XmlTransformerAgent: XML Transformation complete. ---")
             yield Event(
                 author=self.name,
@@ -1299,7 +1287,13 @@ class XmlTransformerAgent(BaseAgent):
 class PlantSimBuilderAgent(BaseAgent):
     """
     Agent that takes CMSD XML data and orchestrates Plant Simulation 
-    to build the visual model using the existing COM/SimTalk workflow.
+    to build the visual model.
+    
+    FIXES:
+    1. Saves XML files to auto_sim/data/CMSD_XML_Output/ and updates active_xml_path.txt 
+       in the auto_sim folder with the new XML file path
+    2. Executes interpreter.py INSIDE Plant Simulation using SimTalk's executePythonFile
+       command, matching the implementation in main.py
     """
     
     def __init__(self):
@@ -1326,44 +1320,40 @@ class PlantSimBuilderAgent(BaseAgent):
             )
             return
 
-        # 2. Save XML to File (Mirroring main.py logic)
+        # 2. Save XML and Update active_xml_path.txt
         try:
             # Ensure output directory exists
             xml_output_dir = Path(config.cmsd_xml["output_dir"])
             xml_output_dir.mkdir(parents=True, exist_ok=True)
 
-            # Generate filename with timestamp
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             prefix = config.cmsd_xml["file_prefix"]
             ext = config.cmsd_xml["file_extension"]
             xml_filename = f"{prefix}{timestamp}{ext}"
             xml_file_path = xml_output_dir / xml_filename
 
-            # Write XML file
             with open(xml_file_path, "w", encoding="utf-8") as f:
                 f.write(xml_content)
             
             print(f"--- PlantSimBuilderAgent: Saved XML to {xml_file_path} ---")
 
-            # 3. Update active_xml_path.txt (Critical for interpreter.py)
-            # interpreter.py reads this specific file to know what to process
-            active_path_file = Path("active_xml_path.txt")
+            # FIX PROBLEM 1: Update active_xml_path.txt where interpreter.py expects it
+            # The interpreter looks for it in the auto_sim directory (project_root)
+            active_path_file = Path(__file__).parent / "active_xml_path.txt"
             with open(active_path_file, "w", encoding="utf-8") as f:
                 f.write(str(xml_file_path.resolve()))
             
-            print(f"--- PlantSimBuilderAgent: Updated {active_path_file} ---")
+            print(f"--- PlantSimBuilderAgent: Updated {active_path_file} with path: {xml_file_path.resolve()} ---")
 
         except Exception as e:
             error_msg = f"PlantSimBuilderAgent Error: Failed to save XML files. Details: {e}"
             yield Event(author=self.name, content=types.Content(parts=[types.Part(text=error_msg)]))
             return
 
-        # 4. Orchestrate Plant Simulation
-        # This logic mirrors the main() function in your colleague's script
+        # 3. Setup Plant Simulation (Connect & Load Template)
         try:
             if os.getenv("ASMG_DRY_RUN", "0") == "1":
-                msg = "ASMG_DRY_RUN enabled: Skipping Plant Simulation connection."
-                print(f"--- {msg} ---")
+                msg = "ASMG_DRY_RUN enabled: Skipping Plant Simulation execution."
                 yield Event(author=self.name, content=types.Content(parts=[types.Part(text=msg)]))
                 return
 
@@ -1371,15 +1361,16 @@ class PlantSimBuilderAgent(BaseAgent):
             template_path = config.plant_simulation["template_path"]
             dest_dir = config.plant_simulation["dest_dir"]
             
-            # A. Connect
             print(f"--- PlantSimBuilderAgent: Connecting to Plant Sim ({prog_id})... ---")
             plant_sim = plant_sim_controller.connect_to_plant_simulation(prog_id)
+            
+            if not plant_sim:
+                raise Exception("Failed to connect to Plant Simulation.")
             
             plant_sim.setVisible(True)
             plant_sim.setTrustModels(True)
 
-            # B. Setup and Load Template
-            # Note: setup_and_load_model handles copying the template to a new file
+            # Load the template (copying it to destination first)
             model_path = plant_sim_controller.setup_and_load_model(
                 plant_sim, 
                 str(template_path), 
@@ -1389,31 +1380,65 @@ class PlantSimBuilderAgent(BaseAgent):
             if not model_path:
                 raise Exception("Failed to load simulation model template.")
 
-            # C. Execute SimTalk to trigger Python Interpreter
-            # This matches the logic in run_simulation() from main.py
-            print("--- PlantSimBuilderAgent: Triggering Interpreter via SimTalk... ---")
-            
-            # Construct SimTalk code exactly as main.py does
-            simtalk_code = f'''
-                setPythonDLLPath("{config.simtalk["python_dll_path"]}");
-                executePythonFile("{config.simtalk["interpreter_path"]}")'''
-            
-            success = plant_sim_controller.execute_simtalk(plant_sim, simtalk_code)
+            print(f"--- PlantSimBuilderAgent: Successfully loaded model: {model_path} ---")
 
-            if not success:
-                raise Exception("SimTalk execution failed.")
-
-            # D. Wait and Save
-            # Note: Since executePythonFile might be synchronous in PlantSim depending on config,
-            # we assume it blocks until interpreter.py is done.
+            # FIX PROBLEM 2: Execute interpreter.py INSIDE Plant Simulation using SimTalk
+            # This matches the implementation in main.py
+            print("--- PlantSimBuilderAgent: Executing SimTalk commands to run interpreter inside Plant Sim... ---")
             
-            # Save the result
-            plant_sim_controller.save(plant_sim, model_path)
+            # Verify paths exist before executing
+            python_dll_path = config.simtalk["python_dll_path"]
+            interpreter_path = config.simtalk["interpreter_path"]
+            
+            print(f"--- PlantSimBuilderAgent: Python DLL Path: {python_dll_path} ---")
+            print(f"--- PlantSimBuilderAgent: Interpreter Path: {interpreter_path} ---")
+            
+            if not Path(python_dll_path).exists():
+                raise Exception(f"Python DLL not found at: {python_dll_path}")
+            
+            if not Path(interpreter_path).exists():
+                raise Exception(f"Interpreter script not found at: {interpreter_path}")
+            
+            # STEP 1: Try setting Python DLL path first
+            print("--- PlantSimBuilderAgent: Step 1 - Setting Python DLL path... ---")
+            simtalk_set_dll = f'setPythonDLLPath("{python_dll_path}");'
+            print(f"SimTalk code: {simtalk_set_dll}")
+            
+            if not plant_sim_controller.execute_simtalk(plant_sim, simtalk_set_dll):
+                error_msg = "Failed to set Python DLL path. Check if the DLL is accessible and Plant Simulation supports this Python version."
+                print(f"--- {error_msg} ---")
+                print("--- PlantSimBuilderAgent: Keeping Plant Simulation open for debugging. ---")
+                yield Event(
+                    author=self.name,
+                    content=types.Content(parts=[types.Part(text=error_msg)])
+                )
+                return
+            
+            print("--- PlantSimBuilderAgent: Successfully set Python DLL path. ---")
+            
+            # STEP 2: Try executing the Python file
+            print("--- PlantSimBuilderAgent: Step 2 - Executing Python interpreter file... ---")
+            simtalk_exec_file = f'executePythonFile("{interpreter_path}");'
+            print(f"SimTalk code: {simtalk_exec_file}")
+            
+            if not plant_sim_controller.execute_simtalk(plant_sim, simtalk_exec_file):
+                error_msg = "Failed to execute interpreter.py. Check Plant Simulation console for Python errors."
+                print(f"--- {error_msg} ---")
+                print("--- PlantSimBuilderAgent: Keeping Plant Simulation open for debugging. Please check the console. ---")
+                # Don't close Plant Sim on error so user can see the error message
+                yield Event(
+                    author=self.name,
+                    content=types.Content(parts=[types.Part(text=error_msg)])
+                )
+                return
+            
+            print("--- PlantSimBuilderAgent: SimTalk commands executed successfully. ---")
+
+            # Save the model after setup
+            if not plant_sim_controller.save(plant_sim, model_path):
+                raise Exception("Failed to save model after setup.")
+
             print(f"--- PlantSimBuilderAgent: Model saved to {model_path} ---")
-
-            # Cleanup
-            # Uncomment if you want to close Plant Sim automatically after generation
-            # plant_sim_controller.quit_simulation(plant_sim)
 
             success_msg = f"Plant Simulation Model successfully generated at: {model_path}"
             yield Event(
@@ -1425,6 +1450,8 @@ class PlantSimBuilderAgent(BaseAgent):
             import traceback
             traceback.print_exc()
             error_msg = f"PlantSimBuilderAgent Critical Error: {e}"
+            print(f"--- {error_msg} ---")
+            print("--- PlantSimBuilderAgent: Keeping Plant Simulation open for debugging. Please check the console. ---")
             yield Event(author=self.name, content=types.Content(parts=[types.Part(text=error_msg)]))
 
 class OrchestratorAgent(SequentialAgent):

@@ -1,7 +1,7 @@
 plant_simulation:
   prog_id: "Tecnomatix.PlantSimulation.RemoteControl"
-  template_path: "data/Simulation_Model/ASMG_model_template.spp"
-  dest_dir: "C:/Users/kute/Desktop/Projects/ASMG - Copy/data/Simulation_Model"
+  template_path: "C:/Users/gpgs16/Documents/adk_agents/auto_sim/data/Simulation_Model_Template/ASMG_model_template.spp"
+  dest_dir: "C:/Users/gpgs16/Documents/adk_agents/auto_sim/data/Simulation_Model_Output"
   object_templates:
     source: "Source"
     drain: "Drain"
@@ -15,18 +15,13 @@ plant_simulation:
     user_object: ".UserObjects.{template_name}"
 
 cmsd_xml:
-  output_dir: "C:/Users/kute/Desktop/Projects/ASMG - Copy/data/CMSD_XML"
+  output_dir: "C:/Users/gpgs16/Documents/adk_agents/auto_sim/data/CMSD_XML_Output"
   file_prefix: "cmsd_xml_"
   file_extension: ".xml"
 
-ai:
-  prompt_file: "Prompts/prompt_SM_03.md"
-  model_name: "gemini-2.5-pro"
-  min_api_key_length: 30
-
 simtalk:
-  python_dll_path: "C:/Users/kute/AppData/Local/anaconda3/envs/ASMG/python313.dll"
-  interpreter_path: "C:/Users/kute/Desktop/Projects/ASMG - Copy/interpreter/interpreter.py"
+  python_dll_path: "C:/Users/gpgs16/anaconda3/envs/auto_sim/python312.dll"
+  interpreter_path: "C:/Users/gpgs16/Documents/adk_agents/auto_sim/interpreter/interpreter.py"
 
 logging:
   level: "INFO"
