@@ -8,7 +8,7 @@ import pytz
 import win32com.client
 
 # Centralized config import
-from config.config_loader import Config
+from ..config.config_loader import Config
 
 config = Config()
 
@@ -304,11 +304,12 @@ def setup_and_load_model(plant_sim, template_path, dest_dir):
     # Setup paths
     destination_path_obj = Path(dest_dir) / f"{new_model_base_name}.spp"
     destination_path_str = str(destination_path_obj.resolve())
-    source_file_abs_path = str(Path(template_path).resolve())
+    source_file_abs_path = Path(template_path).resolve()
 
     # Validate source file exists
-    if not Path(template_path).exists():
-        logger.error("Source template file not found: %s", source_file_abs_path)
+    if not source_file_abs_path.exists():
+        logger.error("Source template file not found: %s",
+                     str(source_file_abs_path))
         return None
 
     # Copy template to new location
@@ -316,7 +317,7 @@ def setup_and_load_model(plant_sim, template_path, dest_dir):
         destination_path_obj.parent.mkdir(parents=True, exist_ok=True)
         import shutil
 
-        shutil.copy2(source_file_abs_path, destination_path_str)
+        shutil.copy2(str(source_file_abs_path), destination_path_str)
         logger.info("Successfully copied template to: %s", destination_path_str)
     except Exception:
         logger.exception(

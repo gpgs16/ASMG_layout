@@ -5,3 +5,5 @@ Pillow
 numpy
 python-dotenv
 pywin32
+pytz
+defusedxml

@@ -6,6 +6,7 @@ and Plant Simulation object creation using the modular components.
 """
 
 import sys
+import win32com.client
 from pathlib import Path
 
 # Add project root to Python path for config access in Plant Simulation environment
@@ -33,13 +34,29 @@ class ASMGInterpreter:
         """Initialize the interpreter with configuration."""
         print("Initializing ASMG Interpreter (New Architecture)...")
 
-        # Load base configuration
         self.config = Config()
 
         # Initialize modules
         self.xml_parser = create_parser()
         self.mapping_engine = create_mapping_engine()
-        self.plantsim_interface = create_plantsim_interface(self.mapping_engine.config)
+
+        # --- NEW: CONNECT TO ACTIVE PLANT SIMULATION INSTANCE ---
+        self.com_object = None
+        try:
+            # GetActiveObject connects to the Plant Sim instance opened by your Agent
+            self.com_object = win32com.client.GetActiveObject("Tecnomatix.PlantSimulation.RemoteControl")
+            print("✓ SUCCESS: Connected to active Plant Simulation via COM.")
+        except Exception as e:
+            print(f"⚠ WARNING: Could not connect to Plant Simulation COM: {e}")
+            print("  > System will run in MOCK mode (no objects will be created).")
+        # ---------------------------------------------------------
+
+        # --- UPDATE: Pass the COM object to the interface creator ---
+        # You need to pass self.com_object here so the interface can use it
+        self.plantsim_interface = create_plantsim_interface(
+            self.mapping_engine.config, 
+            self.com_object  # <--- Pass the connection here
+        )
 
         # Statistics
         self.stats = {

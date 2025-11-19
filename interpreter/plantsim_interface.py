@@ -27,6 +27,72 @@ class PlantSimulationError(Exception):
     pass
 
 
+class COMPlantSimObject:
+    """
+    Wrapper for Plant Simulation objects via COM/win32com.
+    Translates Python actions into SimTalk/COM commands.
+    """
+
+    def __init__(self, com_object, path: str):
+        # Use direct dict assignment to avoid triggering __setattr__
+        self.__dict__["_com"] = com_object
+        self.__dict__["path"] = path
+        self.__dict__["_name"] = path.split(".")[-1]
+
+    def derive(self, parent, name: str):
+        """
+        Derive a new object from this template.
+        SimTalk: template.derive(Location, "Name")
+        """
+        # Construct the SimTalk command
+        # Note: derive returns the new object, but via COM we just execute the command
+        # and instantiate a new wrapper for the expected result path.
+        cmd = f'{self.path}.derive({parent.path}, "{name}")'
+        try:
+            self._com.ExecuteSimTalk(cmd)
+            full_new_path = f"{parent.path}.{name}"
+            return COMPlantSimObject(self._com, full_new_path)
+        except Exception as e:
+            print(f"COM Error calling derive on {self.path}: {e}")
+            raise
+
+    def connect(self, from_obj, to_obj):
+        """
+        Connect two objects.
+        SimTalk: Connector.connect(From, To)
+        """
+        cmd = f'{self.path}.connect({from_obj.path}, {to_obj.path})'
+        try:
+            self._com.ExecuteSimTalk(cmd)
+        except Exception as e:
+            print(f"COM Error calling connect: {e}")
+            raise
+
+    def __getattr__(self, name: str):
+        """
+        Enable chained access (e.g., obj._3D.Rotation).
+        Returns a new wrapper for the nested path.
+        """
+        return COMPlantSimObject(self._com, f"{self.path}.{name}")
+
+    def __setattr__(self, name: str, value: Any):
+        """
+        Set a property value via COM.
+        """
+        # Check if we are setting an internal attribute defined in __init__
+        if name in self.__dict__:
+            super().__setattr__(name, value)
+            return
+
+        # Otherwise, set the value in Plant Sim
+        full_path = f"{self.path}.{name}"
+        try:
+            self._com.SetValue(full_path, value)
+        except Exception as e:
+            print(f"COM Error setting {full_path} = {value}: {e}")
+            raise
+
+
 class MockPlantSimObject:
     """Mock Plant Simulation object for testing outside Plant Simulation."""
 
@@ -62,11 +128,18 @@ class MockPlantSimObject:
 class PlantSimInterface:
     """Interface for Plant Simulation API operations."""
 
-    def __init__(self, config: Dict):
-        """Initialize Plant Simulation interface."""
+    def __init__(self, config: Dict, com_object: Any = None):
+        """
+        Initialize Plant Simulation interface.
+        
+        Args:
+            config: Configuration dictionary.
+            com_object: Optional active Plant Simulation COM object (win32com).
+        """
         self.config = config
         self.plantsim_settings = config.get("plantsim_settings", {})
         self.error_handling = config.get("error_handling", {})
+        self.plant_sim_com = com_object
 
         # Initialize Plant Simulation objects
         self._init_plantsim_objects()
@@ -86,14 +159,17 @@ class PlantSimInterface:
 
     def _init_plantsim_objects(self):
         """Initialize Plant Simulation framework objects."""
-        if PLANT_SIM_AVAILABLE and PlantSimulation is not None:
-            model_frame_path = self.plantsim_settings.get(
-                "model_frame", ".Models.Model"
-            )
-            connector_path = self.plantsim_settings.get(
-                "connector", ".MaterialFlow.Connector"
-            )
+        model_frame_path = self.plantsim_settings.get("model_frame", ".Models.Model")
+        connector_path = self.plantsim_settings.get("connector", ".MaterialFlow.Connector")
 
+        if self.plant_sim_com:
+            # Use COM Wrappers
+            self.model_frame = COMPlantSimObject(self.plant_sim_com, model_frame_path)
+            self.connector = COMPlantSimObject(self.plant_sim_com, connector_path)
+            print("PlantSimInterface: Using Active COM Connection.")
+
+        elif PLANT_SIM_AVAILABLE and PlantSimulation is not None:
+            # Use Internal Python Module
             try:
                 self.model_frame = PlantSimulation.Object(model_frame_path)
                 self.connector = PlantSimulation.Object(connector_path)
@@ -103,8 +179,9 @@ class PlantSimInterface:
                 )
         else:
             # Mock objects for testing
-            self.model_frame = MockPlantSimObject(".Models.Model")
-            self.connector = MockPlantSimObject(".MaterialFlow.Connector")
+            self.model_frame = MockPlantSimObject(model_frame_path)
+            self.connector = MockPlantSimObject(connector_path)
+            print("PlantSimInterface: Using MOCK Objects (Dry Run).")
 
     def create_objects(self, mappings: Dict[str, PlantSimMapping]) -> Dict[str, Any]:
         """Create all Plant Simulation objects from mappings."""
@@ -143,7 +220,9 @@ class PlantSimInterface:
             template_path = f"{self.plantsim_settings.get('user_objects', '.UserObjects')}.{template_name}"
 
         try:
-            if PLANT_SIM_AVAILABLE and PlantSimulation is not None:
+            if self.plant_sim_com:
+                template = COMPlantSimObject(self.plant_sim_com, template_path)
+            elif PLANT_SIM_AVAILABLE and PlantSimulation is not None:
                 template = PlantSimulation.Object(template_path)
             else:
                 template = MockPlantSimObject(template_path)
@@ -208,10 +287,10 @@ class PlantSimInterface:
             # Skip special internal properties
             return
         elif data_type == "list":
-            # Special handling for _3D.Rotation before general list handling
+            # Special handling for _3D.Rotation
             if prop_name == "_3D.Rotation":
                 try:
-                    # Direct assignment exactly like the old working code
+                    # Direct assignment
                     obj._3D.Rotation = value  # [angle, axis_x, axis_y, axis_z] format
                 except Exception as e:
                     print(
@@ -276,18 +355,26 @@ class PlantSimInterface:
         try:
             mu_config = self.config.get("material_units", {})
             template_path = mu_config.get("template_path", ".UserObjects.PartA")
+            
+            # Determine user objects path
+            user_objs_path = self.plantsim_settings.get("user_objects", ".UserObjects")
 
-            if PLANT_SIM_AVAILABLE and PlantSimulation is not None:
+            if self.plant_sim_com:
+                 # COM Wrapper
+                mu_template = COMPlantSimObject(self.plant_sim_com, template_path)
+                # derive needs the parent *object* (wrapper)
+                parent_obj = COMPlantSimObject(self.plant_sim_com, user_objs_path)
+                mu_obj = mu_template.derive(parent_obj, mu_name)
+
+            elif PLANT_SIM_AVAILABLE and PlantSimulation is not None:
                 mu_template = PlantSimulation.Object(template_path)
                 mu_obj = mu_template.derive(
-                    PlantSimulation.Object(
-                        self.plantsim_settings.get("user_objects", ".UserObjects")
-                    ),
+                    PlantSimulation.Object(user_objs_path),
                     mu_name,
                 )
             else:
                 mu_template = MockPlantSimObject(template_path)
-                mu_obj = mu_template.derive(MockPlantSimObject(".UserObjects"), mu_name)
+                mu_obj = mu_template.derive(MockPlantSimObject(user_objs_path), mu_name)
 
             self.material_units[mu_name] = mu_obj
             print(f"Created Material Unit: {mu_name}")
@@ -388,6 +475,6 @@ class PlantSimInterface:
         return issues
 
 
-def create_plantsim_interface(config: Dict) -> PlantSimInterface:
+def create_plantsim_interface(config: Dict, com_object: Any = None) -> PlantSimInterface:
     """Factory function to create Plant Simulation interface."""
-    return PlantSimInterface(config)
+    return PlantSimInterface(config, com_object)
