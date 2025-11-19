@@ -73,7 +73,7 @@ auto_sim/
 │
 ├── data/
 │   ├── CMSD_XML_Output/         # Generated XML files (timestamped)
-│   ├── Simulation_Model/        # Template model (.spp file)
+│   ├── Simulation_Model_Template/ # Template model (.spp file)
 │   └── Simulation_Model_Output/ # Generated models (timestamped)
 │
 ├── interpreter/
@@ -203,7 +203,7 @@ Edit `config/config.yaml` and update all paths to match your system:
 ```yaml
 plant_simulation:
   prog_id: "Tecnomatix.PlantSimulation.RemoteControl"
-  template_path: "C:/YOUR_PATH/auto_sim/data/Simulation_Model/ASMG_model_template.spp"
+  template_path: "C:/YOUR_PATH/auto_sim/data/Simulation_Model_Template/ASMG_model_template.spp"
   dest_dir: "C:/YOUR_PATH/auto_sim/data/Simulation_Model_Output"
   object_templates:
     source: "Source"

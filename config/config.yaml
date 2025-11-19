@@ -1,6 +1,6 @@
 plant_simulation:
   prog_id: "Tecnomatix.PlantSimulation.RemoteControl"
-  template_path: "C:/Users/gpgs16/Documents/adk_agents/auto_sim/data/Simulation_Model/ASMG_model_template.spp"
+  template_path: "C:/Users/gpgs16/Documents/adk_agents/auto_sim/data/Simulation_Model_Template/ASMG_model_template.spp"
   dest_dir: "C:/Users/gpgs16/Documents/adk_agents/auto_sim/data/Simulation_Model_Output"
   object_templates:
     source: "Source"
