@@ -19,3 +19,6 @@ llms-full.txt
 # Ignore OS-specific files
 .DS_Store
 Thumbs.db
+
+# Ignore archive folder
+archive/
