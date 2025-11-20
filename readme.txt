@@ -36,18 +36,22 @@ This system processes images of factory layout diagrams and:
 ## System Architecture
 
 ### Agent Pipeline
-The system uses a sequential multi-agent architecture:
+The system uses a sequential multi-agent architecture, orchestrated by the **OrchestratorAgent**:
 
 1. **LayoutParserAgent** - Detects components using computer vision (ComponentDetector tool)
 2. **SectionPlannerAgent** - Identifies all flow paths through the layout
-3. **StateInitializerAgent** - Initializes processing state for the pipeline
-4. **ConnectionGeneratorAgent** - Generates connection relationships from flow paths
-5. **OrientationFinderLoopAgent** - Determines component orientations (0°, 90°, 180°, 270°)
-6. **TextExtractorAgent** - Extracts textual properties (speeds, times, dimensions)
-7. **TextDataAggregatorAgent** - Aggregates and validates extracted text data
-8. **JsonAssemblerAgent** - Assembles all data into structured JSON format
-9. **XmlTransformerAgent** - Transforms JSON to CMSD XML format
-10. **PlantSimBuilderAgent** - Executes Plant Simulation to build the visual model
+3. **ConnectionGeneratorAgent** - Generates connection relationships from flow paths
+4. **OrientationFinderAgent** - Determines component orientations. This is a composite agent containing:
+    - **OrientationLoopInitializerAgent** - Sets up the loop context
+    - **OrientationFinderLoop** - Iterates through sections to find orientations using:
+        - **SectionOrientationFinderAgent** - Finds orientations for components in a specific section
+        - **OrientationAggregatorAgent** - Collects results
+        - **OrientationLoopControllerAgent** - Manages loop iteration
+5. **TextExtractorAgent** - Extracts textual properties (speeds, times, dimensions)
+6. **TextDataAggregatorAgent** - Aggregates and validates extracted text data
+7. **JsonAssemblerAgent** - Assembles all data into structured JSON format
+8. **XmlTransformerAgent** - Transforms JSON to CMSD XML format
+9. **PlantSimBuilderAgent** - Executes Plant Simulation to build the visual model
 
 ### Key Tools
 - **ComponentDetector** - OpenCV-based contour detection + EasyOCR for component identification
@@ -60,10 +64,23 @@ The system uses a sequential multi-agent architecture:
 auto_sim/
 ├── .env                          # Environment variables (NOT in repo - must create)
 ├── active_xml_path.txt          # Path to current XML file (auto-generated)
-├── agent.py                     # Main agent definitions
+├── agent.py                     # Re-exports agents for backward compatibility
 ├── tools.py                     # Computer vision and OCR tools
 ├── requirements.txt             # Python dependencies
-├── __init__.py                  # Package initialization with root_agent
+├── __init__.py                  # Package initialization
+│
+├── agents/                      # Modularized agent definitions
+│   ├── __init__.py
+│   ├── common.py                # Shared constants and configs
+│   ├── orchestrator.py          # Main OrchestratorAgent
+│   ├── layout_parser.py
+│   ├── section_planner.py
+│   ├── connection_generator.py
+│   ├── orientation_agents.py    # Orientation finding logic (Loop & Sub-agents)
+│   ├── text_extraction_agents.py
+│   ├── json_assembler.py
+│   ├── xml_transformer.py
+│   └── plant_sim_builder.py
 │
 ├── config/
 │   ├── config.yaml              # Main configuration file (MUST UPDATE PATHS)
@@ -345,7 +362,9 @@ User provides a factory layout diagram image (PNG, JPG)
 - Establishes "from-to" relationships between components
 
 #### 5. Orientation Determination
-- **OrientationFinderLoopAgent** processes each section
+- **OrientationFinderAgent** orchestrates the process
+- **OrientationLoopInitializerAgent** prepares the loop
+- **SectionOrientationFinderAgent** processes each section iteratively
 - Uses visual arrow cues to determine orientation:
   - 0° = Left-to-Right
   - 90° = Bottom-to-Top
