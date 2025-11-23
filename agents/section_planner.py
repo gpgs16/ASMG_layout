@@ -19,10 +19,10 @@ class SectionPlannerAgent(Agent):
             Your **ONLY** source of truth for flow direction is the **small, pointed ARROWS** on the lines. You must follow them meticulously.
 
             You must identify two types of paths:
-            1.  **Main Conveyor Paths:** These are the primary horizontal and vertical lines. A main path should be traced as a single, continuous section as long as it maintains a consistent direction (e.g., a long Left-to-Right path). **Do NOT split a main conveyor path just because a workstation loop branches off from it.** A new main path section should only be defined when the primary flow makes a 90-degree turn onto a different main conveyor (e.g., a horizontal conveyor feeding into a vertical one).
-            2.  **Workstation Loops:** Smaller loops that branch off from a main conveyor path (often at a 'D' component) and then rejoin it later. These loops often involve turns, which you **SHOULD** follow to trace the full loop.
+            1.  **Main Conveyor Paths:** These are the primary horizontal and vertical lines. A main path should be traced as a single, continuous section as long as it maintains a consistent direction (e.g., a long Left-to-Right path). **Do NOT split a main conveyor path just because a workstation loop branches off from it.** As long as a path continues in a straight line, it MUST be followed to its end. Do NOT stop a section which still continues in a straight line to start a workstation loop. The workstation loop needs to start only after the main section is completed. A new main path section should only be defined when the primary flow makes a 90-degree turn onto a different main conveyor (e.g., a horizontal conveyor feeding into a vertical one).
+            2.  **Workstation Loops:** Smaller loops that branch off from a main conveyor path. These loops MUST include the intersection point where they diverge from the main path. Therefore, a workstation loop section MUST start with the Diverter ('D') component and end with the Diverter ('D') component. These loops often involve turns, which you **SHOULD** follow to trace the full loop.
 
-            **CRITICAL:** Pay close attention to the arrows on the top and bottom conveyors. Their flow directions may be opposite.
+            **CRITICAL:** The material flow originates at L1 and terminates at U1. You MUST strictly follow the direction of the arrows on the conveyors. Do not infer direction from the layout position; the arrows are the absolute guide for the flow from start (L1) to end (U1).
 
             For each path you identify, list all components *in order of flow* as a single, comma-separated string (e.g., "C1, M1, C2").
             
