@@ -15,6 +15,12 @@ An intelligent agent system built with Google ADK that analyzes factory layout d
 
 ---
 
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+---
+
 ## Overview
 
 This system processes images of factory layout diagrams and:
@@ -183,7 +189,7 @@ GOOGLE_API_KEY=your_actual_api_key_here
 ```
 
 To get an API key:
-1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+1. Go to [Google AI Studio](https://aistudio.google.com/api-keys)
 2. Create a new API key
 3. Copy and paste it into the `.env` file
 
@@ -207,10 +213,6 @@ GOOGLE_CLOUD_LOCATION=us-central1
 3. Set your project:
    ```bash
    gcloud config set project your-gcp-project-id
-   ```
-4. Enable required APIs:
-   ```bash
-   gcloud services enable aiplatform.googleapis.com
    ```
 
 ### 2. Update config.yaml
@@ -269,20 +271,20 @@ python -c "import sys; print(sys.executable)"
 
 ## Running the System
 
-### Method 1: Using ADK Web UI (Recommended for Development)
+### Method 1: Using ADK Web UI (Recommended)
 
 The web interface provides an interactive environment with visual feedback:
 
 ```bash
 # Navigate to the parent directory of auto_sim
-cd C:/Users/gpgs16/Documents/adk_agents
+cd C:/YOUR_PATH/adk_agents
 
 # Start the web server
 adk web auto_sim
 ```
 
 This will:
-- Start a web server (typically at `http://localhost:8000`)
+- Start a web server
 - Open your browser automatically
 - Provide an interactive chat interface
 
@@ -292,7 +294,6 @@ This will:
 3. View results, intermediate outputs, and generated files in the UI
 
 **Troubleshooting Web UI**:
-- If you get `NotImplementedError`, try: `adk web auto_sim --no-reload`
 - Ensure you're running the command from the **parent** folder of `auto_sim`
 - Check that `__init__.py` defines `root_agent = agent.OrchestratorAgent()`
 
@@ -373,7 +374,7 @@ User provides a factory layout diagram image (PNG, JPG)
 
 #### 6. Property Extraction
 - **TextExtractorAgent** scans for textual properties
-- Extracts: speeds, processing times, MTTR/MTBF, dimensions
+- Extracts: speeds, processing times, dimensions
 - Associates properties with specific components
 
 #### 7. JSON Assembly
@@ -384,7 +385,6 @@ User provides a factory layout diagram image (PNG, JPG)
 #### 8. XML Transformation
 - **XmlTransformerAgent** converts JSON to CMSD XML standard
 - Includes: Resources, LayoutObjects, Placements, Connections
-- Follows Plant Simulation's expected XML schema
 
 #### 9. Model Building
 - **PlantSimBuilderAgent** saves XML to `data/CMSD_XML_Output/`
@@ -430,74 +430,21 @@ User provides a factory layout diagram image (PNG, JPG)
 - **Solution**:
   - Check Plant Simulation console for Python errors
   - Verify `interpreter_path` in `config.yaml` is correct (absolute path)
-  - Ensure Python version in Plant Simulation matches your environment
-
-### Path Issues
-
-**Problem**: "Template model not found"
-- **Solution**: 
-  - Verify `template_path` in `config.yaml` points to existing `.spp` file
-  - Use absolute paths (e.g., `C:/Users/...`)
-  - Check for typos in path names
-
-**Problem**: "Permission denied" when saving files
-- **Solution**:
-  - Ensure output directories exist and are writable
-  - Close any open models in Plant Simulation
-  - Check Windows file permissions
-
-### Agent Execution Issues
-
-**Problem**: "No image provided" error
-- **Solution**: Ensure you're uploading an image in the correct format (PNG, JPG)
-
-**Problem**: "ComponentDetector failed"
-- **Solution**:
-  - Verify image quality is sufficient
-  - Check that components are clearly visible with good contrast
-  - Ensure component labels are readable
-
-**Problem**: Agent stops/hangs during execution
-- **Solution**:
-  - Check console output for specific error messages
-  - Verify all API quotas and limits (if using Google AI)
-  - Check Plant Simulation is not blocked by a dialog box
-
-### Debugging Tips
-
-1. **Check Logs**: Review console output for detailed error messages
-2. **Validate Paths**: Ensure all paths in `config.yaml` are absolute and correct
-3. **Test Components**: Test each component separately:
-   - Test image upload
-   - Test Plant Simulation connection
-   - Test XML generation
-4. **Environment**: Verify `.env` is loaded: 
-   ```python
-   import os
-   print(os.getenv('GOOGLE_API_KEY'))
-   ```
 
 ---
 
 ## Additional Resources
 
-- [Google ADK Documentation](https://github.com/google/adk)
-- [Plant Simulation Documentation](https://docs.plm.automation.siemens.com/plant_simulation)
-- [CMSD Standard](https://www.nist.gov/services-resources/software/core-manufacturing-simulation-data-cmsd)
+- [Google ADK Documentation](https://google.github.io/adk-docs/)
 
 ---
 
-## Support
+## Funding Acknowledgement
 
-For issues specific to this implementation, please check:
-1. The console output for detailed error messages
-2. Plant Simulation console for COM/Python errors  
-3. The repository issues page
-
-For Google ADK issues, refer to the official ADK documentation.
+This research is funded by the Federal Ministry of Research, Technology and Space of Germany (BMFTR) under Grant 02J24A150.
 
 ---
 
 ## License
 
-See repository for license information.
+This project is licensed under the MIT License. See the LICENSE file for details.
